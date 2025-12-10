@@ -3,12 +3,11 @@ name: Update go2rtc formula
 on:
   schedule:
     - cron: "0 6 * * *"   # 每天 06:00 UTC 跑一次
-  workflow_dispatch:       # 允许手动触发
+  workflow_dispatch:      # 允许手动触发
 
 jobs:
   update-formula:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout tap repo
         uses: actions/checkout@v4
@@ -20,10 +19,8 @@ jobs:
           json=$(curl -s "$api")
           tag=$(echo "$json" | jq -r '.tag_name')
           version="${tag#v}"
-
           echo "Latest tag: $tag"
           echo "Latest version: $version"
-
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -35,7 +32,6 @@ jobs:
           else
             current=""
           fi
-
           echo "Current version: $current"
           echo "current=$current" >> "$GITHUB_OUTPUT"
 
@@ -49,22 +45,22 @@ jobs:
         id: sha
         run: |
           tag="${{ steps.latest.outputs.tag }}"
-
+          # 注意：请确保 go2rtc 的 release 确实提供了 zip 格式，如果是 raw binary，这里的文件名后缀可能需要调整
           arm_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_arm64.zip"
           amd_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_amd64.zip"
-
+          
           echo "Downloading $arm_url"
           curl -L "$arm_url" -o go2rtc_mac_arm64.zip
-
+          
           echo "Downloading $amd_url"
           curl -L "$amd_url" -o go2rtc_mac_amd64.zip
-
+          
           arm_sha=$(shasum -a 256 go2rtc_mac_arm64.zip | cut -d' ' -f1)
           amd_sha=$(shasum -a 256 go2rtc_mac_amd64.zip | cut -d' ' -f1)
-
+          
           echo "arm_sha=$arm_sha"
           echo "amd_sha=$amd_sha"
-
+          
           echo "arm_url=$arm_url" >> "$GITHUB_OUTPUT"
           echo "amd_url=$amd_url" >> "$GITHUB_OUTPUT"
           echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
@@ -78,37 +74,39 @@ jobs:
           amd_url="${{ steps.sha.outputs.amd_url }}"
           arm_sha="${{ steps.sha.outputs.arm_sha }}"
           amd_sha="${{ steps.sha.outputs.amd_sha }}"
-
+          
           mkdir -p Formula
 
-          cat > Formula/go2rtc.rb << 'RUBY'
-class Go2rtc < Formula
-  desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
-  homepage "https://github.com/AlexxIT/go2rtc"
-  version "__VERSION__"
-
-  if Hardware::CPU.arm?
-    url "__ARM_URL__"
-    sha256 "__ARM_SHA__"
-  else
-    url "__AMD_URL__"
-    sha256 "__AMD_SHA__"
-  end
-
-  def install
-    if Hardware::CPU.arm?
-      bin.install "go2rtc_mac_arm64" => "go2rtc"
-    else
-      bin.install "go2rtc_mac_amd64" => "go2rtc"
-    end
-  end
-
-  test do
-    output = shell_output("#{bin}/go2rtc -h 2>&1")
-    assert_match "go2rtc", output
-  end
-end
-RUBY
+          # --- 关键修复：这里的代码必须保持缩进 ---
+          cat > Formula/go2rtc.rb << 'EOF'
+          class Go2rtc < Formula
+            desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
+            homepage "https://github.com/AlexxIT/go2rtc"
+            version "__VERSION__"
+          
+            if Hardware::CPU.arm?
+              url "__ARM_URL__"
+              sha256 "__ARM_SHA__"
+            else
+              url "__AMD_URL__"
+              sha256 "__AMD_SHA__"
+            end
+          
+            def install
+              if Hardware::CPU.arm?
+                bin.install "go2rtc_mac_arm64" => "go2rtc"
+              else
+                bin.install "go2rtc_mac_amd64" => "go2rtc"
+              end
+            end
+          
+            test do
+              output = shell_output("#{bin}/go2rtc -h 2>&1")
+              assert_match "go2rtc", output
+            end
+          end
+          EOF
+          # --- 缩进结束 ---
 
           # 替换占位符
           sed -i "s/__VERSION__/${version}/" Formula/go2rtc.rb
@@ -116,7 +114,7 @@ RUBY
           sed -i "s/__ARM_SHA__/${arm_sha}/" Formula/go2rtc.rb
           sed -i "s#__AMD_URL__#${amd_url}#" Formula/go2rtc.rb
           sed -i "s/__AMD_SHA__/${amd_sha}/" Formula/go2rtc.rb
-
+          
           echo "New Formula/go2rtc.rb:"
           cat Formula/go2rtc.rb
 
