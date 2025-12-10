@@ -86,86 +86,83 @@ jobs:
           mkdir -p Formula
 
           cat > Formula/go2rtc.rb <<EOF
-          class Go2rtc < Formula
-            desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
-            homepage "https://github.com/AlexxIT/go2rtc"
-            version "${version}"
+class Go2rtc < Formula
+  desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
+  homepage "https://github.com/AlexxIT/go2rtc"
+  version "${version}"
 
-            # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动填入
-            if Hardware::CPU.arm?
-              url "${arm_url}"
-              sha256 "${arm_sha}"
-            else
-              url "${amd_url}"
-              sha256 "${amd_sha}"
-            end
+  # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动填入
+  if Hardware::CPU.arm?
+    url "${arm_url}"
+    sha256 "${arm_sha}"
+  else
+    url "${amd_url}"
+    sha256 "${amd_sha}"
+  end
 
-            def install
-              # 上游 zip 解压后里面的二进制名是 go2rtc_mac_arm64 / go2rtc_mac_amd64
-              bin_name = if Hardware::CPU.arm?
-                "go2rtc_mac_arm64"
-              else
-                "go2rtc_mac_amd64"
-              end
+  def install
+    # 上游 zip 解压后里面的二进制通常叫 go2rtc，稳妥起见用通配符查找
+    candidates = Dir["**/go2rtc*"].select { |f| File.file?(f) && File.executable?(f) }
+    odie "go2rtc binary not found in archive" if candidates.empty?
 
-              bin.install bin_name => "go2rtc"
+    bin.install candidates.first => "go2rtc"
 
-              # 默认配置目录：/opt/homebrew/etc/go2rtc/go2rtc.yaml
-              (etc/"go2rtc").mkpath
-              config_file = etc/"go2rtc/go2rtc.yaml"
-              unless config_file.exist?
-                config_file.write <<~YAML
-                  # go2rtc default config
-                  # 修改这个文件后重启服务生效：brew services restart go2rtc
-                  streams: {}
-                YAML
-              end
-            end
+    # 默认配置目录：/opt/homebrew/etc/go2rtc/go2rtc.yaml
+    (etc/"go2rtc").mkpath
+    config_file = etc/"go2rtc/go2rtc.yaml"
+    unless config_file.exist?
+      config_file.write <<~YAML
+        # go2rtc default config
+        # 修改这个文件后重启服务生效：brew services restart go2rtc
+        streams: {}
+      YAML
+    end
+  end
 
-            def post_install
-              # 工作目录和日志目录
-              (var/"go2rtc").mkpath
-              (var/"log").mkpath
-            end
+  def post_install
+    # 工作目录和日志目录
+    (var/"go2rtc").mkpath
+    (var/"log").mkpath
+  end
 
-            def caveats
-              <<~EOS
-                配置文件:
-                  \#{etc}/go2rtc/go2rtc.yaml
+  def caveats
+    <<~EOS
+      配置文件:
+        \#{etc}/go2rtc/go2rtc.yaml
 
-                日志文件:
-                  \#{var}/log/go2rtc.log
+      日志文件:
+        \#{var}/log/go2rtc.log
 
-                作为守护进程运行、开机自启:
-                  brew services start \#{name.downcase}
+      作为守护进程运行、开机自启:
+        brew services start \#{name.downcase}
 
-                停止守护进程:
-                  brew services stop \#{name.downcase}
+      停止守护进程:
+        brew services stop \#{name.downcase}
 
-                修改配置后重启:
-                  brew services restart \#{name.downcase}
-              EOS
-            end
+      修改配置后重启:
+        brew services restart \#{name.downcase}
+    EOS
+  end
 
-            # Homebrew 守护进程配置 => 转成 launchd plist
-            service do
-              run [opt_bin/"go2rtc", "-config", etc/"go2rtc/go2rtc.yaml"]
-              working_dir var/"go2rtc"
+  # Homebrew 守护进程配置 => 转成 launchd plist
+  service do
+    run [opt_bin/"go2rtc", "-config", etc/"go2rtc/go2rtc.yaml"]
+    working_dir var/"go2rtc"
 
-              # 崩溃/退出自动重启 & 开机自启
-              keep_alive true
+    # 崩溃/退出自动重启 & 开机自启
+    keep_alive true
 
-              # 日志
-              log_path var/"log/go2rtc.log"
-              error_log_path var/"log/go2rtc.log"
-            end
+    # 日志
+    log_path var/"log/go2rtc.log"
+    error_log_path var/"log/go2rtc.log"
+  end
 
-            test do
-              output = shell_output("\#{bin}/go2rtc -h 2>&1")
-              assert_match "go2rtc", output
-            end
-          end
-          EOF
+  test do
+    output = shell_output("\#{bin}/go2rtc -h 2>&1")
+    assert_match "go2rtc", output
+  end
+end
+EOF
 
           echo "New Formula/go2rtc.rb:"
           cat Formula/go2rtc.rb
