@@ -1,4 +1,4 @@
-name: Update go2rtc formula 
+name: Update go2rtc formula
 
 on:
   schedule:
