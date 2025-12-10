@@ -1,15 +1,15 @@
 class Go2rtc < Formula
   desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
   homepage "https://github.com/AlexxIT/go2rtc"
-  version "__VERSION__"
+  version "1.9.12"
 
-  # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动替换
+  # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动填入
   if Hardware::CPU.arm?
-    url "__ARM_URL__"
-    sha256 "__ARM_SHA__"
+    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.12/go2rtc_mac_arm64.zip"
+    sha256 "63d3e986ecc6e9878cd10bb92b7e7fefc427f390519b10e059f8f47dba33dd5e"
   else
-    url "__AMD_URL__"
-    sha256 "__AMD_SHA__"
+    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.12/go2rtc_mac_amd64.zip"
+    sha256 "865e0f46823a80980b9cccad05c29b6ff8f4003de7b00520db353d5ca84d12d7"
   end
 
   def install
@@ -43,19 +43,19 @@ class Go2rtc < Formula
   def caveats
     <<~EOS
       配置文件:
-        #{etc}/go2rtc/go2rtc.yaml
+        \#{etc}/go2rtc/go2rtc.yaml
 
       日志文件:
-        #{var}/log/go2rtc.log
+        \#{var}/log/go2rtc.log
 
       作为守护进程运行、开机自启:
-        brew services start #{name.downcase}
+        brew services start \#{name.downcase}
 
       停止守护进程:
-        brew services stop #{name.downcase}
+        brew services stop \#{name.downcase}
 
       修改配置后重启:
-        brew services restart #{name.downcase}
+        brew services restart \#{name.downcase}
     EOS
   end
 
@@ -73,7 +73,7 @@ class Go2rtc < Formula
   end
 
   test do
-    output = shell_output("#{bin}/go2rtc -h 2>&1")
+    output = shell_output("\#{bin}/go2rtc -h 2>&1")
     assert_match "go2rtc", output
   end
 end
