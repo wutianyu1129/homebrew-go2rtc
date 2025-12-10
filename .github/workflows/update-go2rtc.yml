@@ -5,6 +5,9 @@ on:
     - cron: "0 6 * * *"   # 每天 06:00 UTC 跑一次
   workflow_dispatch:       # 允许手动触发
 
+permissions:
+  contents: write          # 允许 GITHUB_TOKEN 推代码
+
 jobs:
   update-formula:
     runs-on: ubuntu-latest
@@ -47,6 +50,7 @@ jobs:
         run: |
           tag="${{ steps.latest.outputs.tag }}"
 
+          # 直接使用上游 release 的原始链接
           arm_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_arm64.zip"
           amd_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_amd64.zip"
 
@@ -67,6 +71,9 @@ jobs:
           echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
           echo "amd_sha=$amd_sha" >> "$GITHUB_OUTPUT"
 
+          # 用完 zip 直接删掉，避免被提交
+          rm -f go2rtc_mac_arm64.zip go2rtc_mac_amd64.zip
+
       - name: Rewrite Formula/go2rtc.rb
         if: steps.latest.outputs.version != steps.current.outputs.current
         run: |
@@ -78,7 +85,6 @@ jobs:
 
           mkdir -p Formula
 
-          # 这里直接把变量插进去，不再用占位符 + sed
           cat > Formula/go2rtc.rb <<EOF
           class Go2rtc < Formula
             desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
@@ -170,3 +176,4 @@ jobs:
         with:
           commit_message: "chore: bump go2rtc to ${{ steps.latest.outputs.tag }}"
           branch: main
+          file_pattern: Formula/go2rtc.rb   # 只提交 Formula，不提交其它文件
