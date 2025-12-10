@@ -2,8 +2,8 @@ name: Update go2rtc formula
 
 on:
   schedule:
-    - cron: "0 6 * * *"  # 每天 06:00 UTC 跑一次
-  workflow_dispatch:      # 允许手动触发
+    - cron: "0 6 * * *"   # 每天 06:00 UTC 跑一次
+  workflow_dispatch:       # 允许手动触发
 
 jobs:
   update-formula:
@@ -16,13 +16,16 @@ jobs:
       - name: Get latest go2rtc release tag
         id: latest
         run: |
-          tag=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | \
-                grep '"tag_name":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "tag=$tag"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          api="https://api.github.com/repos/AlexxIT/go2rtc/releases/latest"
+          json=$(curl -s "$api")
 
+          tag=$(echo "$json" | jq -r '.tag_name')
           version="${tag#v}"
-          echo "version=$version"
+
+          echo "Latest tag: $tag"
+          echo "Latest version: $version"
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Get current version from formula (if exists)
@@ -33,7 +36,8 @@ jobs:
           else
             current=""
           fi
-          echo "current=$current"
+
+          echo "Current version: $current"
           echo "current=$current" >> "$GITHUB_OUTPUT"
 
       - name: Already up to date?
@@ -59,6 +63,9 @@ jobs:
           arm_sha=$(shasum -a 256 go2rtc_mac_arm64.zip | cut -d' ' -f1)
           amd_sha=$(shasum -a 256 go2rtc_mac_amd64.zip | cut -d' ' -f1)
 
+          echo "arm_sha=$arm_sha"
+          echo "amd_sha=$amd_sha"
+
           echo "arm_url=$arm_url" >> "$GITHUB_OUTPUT"
           echo "amd_url=$amd_url" >> "$GITHUB_OUTPUT"
           echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
@@ -75,18 +82,18 @@ jobs:
 
           mkdir -p Formula
 
-          cat > Formula/go2rtc.rb <<EOF
+          cat > Formula/go2rtc.rb << 'RUBY'
 class Go2rtc < Formula
   desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
   homepage "https://github.com/AlexxIT/go2rtc"
-  version "${version}"
+  version "__VERSION__"
 
   if Hardware::CPU.arm?
-    url "${arm_url}"
-    sha256 "${arm_sha}"
+    url "__ARM_URL__"
+    sha256 "__ARM_SHA__"
   else
-    url "${amd_url}"
-    sha256 "${amd_sha}"
+    url "__AMD_URL__"
+    sha256 "__AMD_SHA__"
   end
 
   def install
@@ -98,11 +105,21 @@ class Go2rtc < Formula
   end
 
   test do
-    output = shell_output("\#{bin}/go2rtc -h 2>&1")
+    output = shell_output("#{bin}/go2rtc -h 2>&1")
     assert_match "go2rtc", output
   end
 end
-EOF
+RUBY
+
+          # 替换占位符
+          sed -i "s/__VERSION__/${version}/" Formula/go2rtc.rb
+          sed -i "s#__ARM_URL__#${arm_url}#" Formula/go2rtc.rb
+          sed -i "s/__ARM_SHA__/${arm_sha}/" Formula/go2rtc.rb
+          sed -i "s#__AMD_URL__#${amd_url}#" Formula/go2rtc.rb
+          sed -i "s/__AMD_SHA__/${amd_sha}/" Formula/go2rtc.rb
+
+          echo "New Formula/go2rtc.rb:"
+          cat Formula/go2rtc.rb
 
       - name: Commit and push changes
         if: steps.latest.outputs.version != steps.current.outputs.current
