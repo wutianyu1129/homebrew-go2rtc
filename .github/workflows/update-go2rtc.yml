@@ -3,15 +3,14 @@ name: Update go2rtc formula
 on:
   schedule:
     - cron: "0 6 * * *"   # 每天 06:00 UTC 跑一次
-  workflow_dispatch:       # 允许手动触发
+  workflow_dispatch:      # 允许手动触发
 
 permissions:
-  contents: write          # 允许 GITHUB_TOKEN 推代码
+  contents: write         # 允许 GITHUB_TOKEN 推代码
 
 jobs:
   update-formula:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout tap repo
         uses: actions/checkout@v4
@@ -49,28 +48,27 @@ jobs:
         id: sha
         run: |
           tag="${{ steps.latest.outputs.tag }}"
-
           # 直接使用上游 release 的原始链接
           arm_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_arm64.zip"
           amd_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_amd64.zip"
-
+          
           echo "Downloading $arm_url"
           curl -L "$arm_url" -o go2rtc_mac_arm64.zip
-
+          
           echo "Downloading $amd_url"
           curl -L "$amd_url" -o go2rtc_mac_amd64.zip
-
+          
           arm_sha=$(shasum -a 256 go2rtc_mac_arm64.zip | cut -d' ' -f1)
           amd_sha=$(shasum -a 256 go2rtc_mac_amd64.zip | cut -d' ' -f1)
-
+          
           echo "arm_sha=$arm_sha"
           echo "amd_sha=$amd_sha"
-
+          
           echo "arm_url=$arm_url" >> "$GITHUB_OUTPUT"
           echo "amd_url=$amd_url" >> "$GITHUB_OUTPUT"
           echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
           echo "amd_sha=$amd_sha" >> "$GITHUB_OUTPUT"
-
+          
           # 用完 zip 直接删掉，避免被提交
           rm -f go2rtc_mac_arm64.zip go2rtc_mac_amd64.zip
 
@@ -82,88 +80,92 @@ jobs:
           amd_url="${{ steps.sha.outputs.amd_url }}"
           arm_sha="${{ steps.sha.outputs.arm_sha }}"
           amd_sha="${{ steps.sha.outputs.amd_sha }}"
-
+          
           mkdir -p Formula
-
-          cat > Formula/go2rtc.rb <<EOF
-class Go2rtc < Formula
-  desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
-  homepage "https://github.com/AlexxIT/go2rtc"
-  version "${version}"
-
-  # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动填入
-  if Hardware::CPU.arm?
-    url "${arm_url}"
-    sha256 "${arm_sha}"
-  else
-    url "${amd_url}"
-    sha256 "${amd_sha}"
-  end
-
-  def install
-    # 上游 zip 解压后里面的二进制通常叫 go2rtc，稳妥起见用通配符查找
-    candidates = Dir["**/go2rtc*"].select { |f| File.file?(f) && File.executable?(f) }
-    odie "go2rtc binary not found in archive" if candidates.empty?
-
-    bin.install candidates.first => "go2rtc"
-
-    # 默认配置目录：/opt/homebrew/etc/go2rtc/go2rtc.yaml
-    (etc/"go2rtc").mkpath
-    config_file = etc/"go2rtc/go2rtc.yaml"
-    unless config_file.exist?
-      config_file.write <<~YAML
-        # go2rtc default config
-        # 修改这个文件后重启服务生效：brew services restart go2rtc
-        streams: {}
-      YAML
-    end
-  end
-
-  def post_install
-    # 工作目录和日志目录
-    (var/"go2rtc").mkpath
-    (var/"log").mkpath
-  end
-
-  def caveats
-    <<~EOS
-      配置文件:
-        \#{etc}/go2rtc/go2rtc.yaml
-
-      日志文件:
-        \#{var}/log/go2rtc.log
-
-      作为守护进程运行、开机自启:
-        brew services start \#{name.downcase}
-
-      停止守护进程:
-        brew services stop \#{name.downcase}
-
-      修改配置后重启:
-        brew services restart \#{name.downcase}
-    EOS
-  end
-
-  # Homebrew 守护进程配置 => 转成 launchd plist
-  service do
-    run [opt_bin/"go2rtc", "-config", etc/"go2rtc/go2rtc.yaml"]
-    working_dir var/"go2rtc"
-
-    # 崩溃/退出自动重启 & 开机自启
-    keep_alive true
-
-    # 日志
-    log_path var/"log/go2rtc.log"
-    error_log_path var/"log/go2rtc.log"
-  end
-
-  test do
-    output = shell_output("\#{bin}/go2rtc -h 2>&1")
-    assert_match "go2rtc", output
-  end
-end
-EOF
-
+          
+          # ---------------------------------------------------------
+          # 注意：这里使用 'EOF' (带单引号) 防止 Shell 变量展开干扰 Ruby 代码
+          # 所有的缩进必须对齐，属于 run: | 模块下
+          # ---------------------------------------------------------
+          cat > Formula/go2rtc.rb << 'EOF'
+          class Go2rtc < Formula
+            desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
+            homepage "https://github.com/AlexxIT/go2rtc"
+            version "__VERSION__"
+          
+            # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动填入
+            if Hardware::CPU.arm?
+              url "__ARM_URL__"
+              sha256 "__ARM_SHA__"
+            else
+              url "__AMD_URL__"
+              sha256 "__AMD_SHA__"
+            end
+          
+            def install
+              # 上游 zip 解压后里面的二进制通常叫 go2rtc，稳妥起见用通配符查找
+              candidates = Dir["**/go2rtc*"].select { |f| File.file?(f) && File.executable?(f) }
+              odie "go2rtc binary not found in archive" if candidates.empty?
+              bin.install candidates.first => "go2rtc"
+          
+              # 默认配置目录：/opt/homebrew/etc/go2rtc/go2rtc.yaml
+              (etc/"go2rtc").mkpath
+              config_file = etc/"go2rtc/go2rtc.yaml"
+              unless config_file.exist?
+                config_file.write <<~YAML
+                  # go2rtc default config
+                  # 修改这个文件后重启服务生效：brew services restart go2rtc
+                  streams: {}
+                YAML
+              end
+            end
+          
+            def post_install
+              # 工作目录和日志目录
+              (var/"go2rtc").mkpath
+              (var/"log").mkpath
+            end
+          
+            def caveats
+              <<~EOS
+                配置文件:
+                  #{etc}/go2rtc/go2rtc.yaml
+                日志文件:
+                  #{var}/log/go2rtc.log
+                作为守护进程运行、开机自启:
+                  brew services start #{name.downcase}
+                停止守护进程:
+                  brew services stop #{name.downcase}
+                修改配置后重启:
+                  brew services restart #{name.downcase}
+              EOS
+            end
+          
+            # Homebrew 守护进程配置 => 转成 launchd plist
+            service do
+              run [opt_bin/"go2rtc", "-config", etc/"go2rtc/go2rtc.yaml"]
+              working_dir var/"go2rtc"
+              # 崩溃/退出自动重启 & 开机自启
+              keep_alive true
+              # 日志
+              log_path var/"log/go2rtc.log"
+              error_log_path var/"log/go2rtc.log"
+            end
+          
+            test do
+              output = shell_output("#{bin}/go2rtc -h 2>&1")
+              assert_match "go2rtc", output
+            end
+          end
+          EOF
+          
+          # 使用 sed 替换占位符
+          sed -i "s/__VERSION__/${version}/" Formula/go2rtc.rb
+          sed -i "s#__ARM_URL__#${arm_url}#" Formula/go2rtc.rb
+          sed -i "s/__ARM_SHA__/${arm_sha}/" Formula/go2rtc.rb
+          sed -i "s#__AMD_URL__#${amd_url}#" Formula/go2rtc.rb
+          sed -i "s/__AMD_SHA__/${amd_sha}/" Formula/go2rtc.rb
+          
           echo "New Formula/go2rtc.rb:"
           cat Formula/go2rtc.rb
 
@@ -173,4 +175,4 @@ EOF
         with:
           commit_message: "chore: bump go2rtc to ${{ steps.latest.outputs.tag }}"
           branch: main
-          file_pattern: Formula/go2rtc.rb   # 只提交 Formula，不提交其它文件
+          file_pattern: Formula/go2rtc.rb
