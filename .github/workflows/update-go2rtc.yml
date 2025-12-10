@@ -2,8 +2,8 @@ name: Update go2rtc formula
 
 on:
   schedule:
-    - cron: "0 6 * * *"  # 每天早上 6 点 UTC 跑一次
-  workflow_dispatch: {}   # 也支持手动触发
+    - cron: "0 6 * * *"  # 每天 06:00 UTC 跑一次
+  workflow_dispatch:      # 允许手动触发
 
 jobs:
   update-formula:
@@ -14,88 +14,99 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Get latest go2rtc release tag
-        id: get_tag
+        id: latest
         run: |
-          latest=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | \
-                   grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "tag=$latest" >> $GITHUB_OUTPUT
+          tag=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | \
+                grep '"tag_name":' | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "tag=$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-      - name: Read current version from formula
-        id: get_version
+          version="${tag#v}"
+          echo "version=$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Get current version from formula (if exists)
+        id: current
         run: |
-          current=$(grep 'version "' Formula/go2rtc.rb | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "current=$current" >> $GITHUB_OUTPUT
+          if [ -f Formula/go2rtc.rb ]; then
+            current=$(grep 'version "' Formula/go2rtc.rb | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          else
+            current=""
+          fi
+          echo "current=$current"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
 
-      - name: Stop if version is already latest
-        if: steps.get_tag.outputs.tag == format('v{0}', steps.get_version.outputs.current)
+      - name: Already up to date?
+        if: steps.latest.outputs.version == steps.current.outputs.current
         run: |
-          echo "Already up to date: ${ { steps.get_version.outputs.current } }"
-          exit 0
+          echo "Already up to date: ${{ steps.current.outputs.current }}"
 
-      - name: Download new binaries and calc sha256
+      - name: Download new binaries and calculate sha256
+        if: steps.latest.outputs.version != steps.current.outputs.current
         id: sha
         run: |
-          tag=${{ steps.get_tag.outputs.tag }}
+          tag="${{ steps.latest.outputs.tag }}"
 
           arm_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_arm64.zip"
           amd_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_amd64.zip"
 
+          echo "Downloading $arm_url"
           curl -L "$arm_url" -o go2rtc_mac_arm64.zip
+
+          echo "Downloading $amd_url"
           curl -L "$amd_url" -o go2rtc_mac_amd64.zip
 
           arm_sha=$(shasum -a 256 go2rtc_mac_arm64.zip | cut -d' ' -f1)
           amd_sha=$(shasum -a 256 go2rtc_mac_amd64.zip | cut -d' ' -f1)
 
-          echo "arm_sha=$arm_sha" >> $GITHUB_OUTPUT
-          echo "amd_sha=$amd_sha" >> $GITHUB_OUTPUT
-          echo "arm_url=$arm_url" >> $GITHUB_OUTPUT
-          echo "amd_url=$amd_url" >> $GITHUB_OUTPUT
+          echo "arm_url=$arm_url" >> "$GITHUB_OUTPUT"
+          echo "amd_url=$amd_url" >> "$GITHUB_OUTPUT"
+          echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
+          echo "amd_sha=$amd_sha" >> "$GITHUB_OUTPUT"
 
-      - name: Update formula file
+      - name: Rewrite Formula/go2rtc.rb
+        if: steps.latest.outputs.version != steps.current.outputs.current
         run: |
-          new_version=${{ steps.get_tag.outputs.tag }}
-          new_version=${new_version#v}  # 去掉前面的 v
+          version="${{ steps.latest.outputs.version }}"
+          arm_url="${{ steps.sha.outputs.arm_url }}"
+          amd_url="${{ steps.sha.outputs.amd_url }}"
+          arm_sha="${{ steps.sha.outputs.arm_sha }}"
+          amd_sha="${{ steps.sha.outputs.amd_sha }}"
 
-          arm_sha=${{ steps.sha.outputs.arm_sha }}
-          amd_sha=${{ steps.sha.outputs.amd_sha }}
-          arm_url=${{ steps.sha.outputs.arm_url }}
-          amd_url=${{ steps.sha.outputs.amd_url }}
+          mkdir -p Formula
 
-          # 更新 version
-          sed -i "s/^  version \".*\"/  version \"${new_version}\"/" Formula/go2rtc.rb
+          cat > Formula/go2rtc.rb <<EOF
+class Go2rtc < Formula
+  desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
+  homepage "https://github.com/AlexxIT/go2rtc"
+  version "${version}"
 
-          # 更新 arm64 url & sha256
-          sed -i "s#https://github.com/AlexxIT/go2rtc/releases/download/.*go2rtc_mac_arm64.zip#${arm_url}#" Formula/go2rtc.rb
-          sed -i "s/sha256 \".*\"/sha256 \"${arm_sha}\"/" Formula/go2rtc.rb
+  if Hardware::CPU.arm?
+    url "${arm_url}"
+    sha256 "${arm_sha}"
+  else
+    url "${amd_url}"
+    sha256 "${amd_sha}"
+  end
 
-          # 更新 amd64 url & sha256（这里简单粗暴一点，用行号/上下文会更安全）
-          # 为了简单，这里假设 amd64 那段在 arm64 后面，可以再精细化匹配
-          awk '
-            /go2rtc_mac_arm64.zip/ {arm=1}
-            /go2rtc_mac_amd64.zip/ {amd=1}
-            {
-              if (amd == 1 && $0 ~ /https:\/\/github.com\/AlexxIT\/go2rtc\/releases\/download/) {
-                sub(/https:\/\/github.com\/AlexxIT\/go2rtc\/releases\/download\/[^"]+go2rtc_mac_amd64.zip/, "'"$amd_url"'", $0)
-              }
-              print
-            }
-          ' Formula/go2rtc.rb > Formula/go2rtc.tmp && mv Formula/go2rtc.tmp Formula/go2rtc.rb
+  def install
+    if Hardware::CPU.arm?
+      bin.install "go2rtc_mac_arm64" => "go2rtc"
+    else
+      bin.install "go2rtc_mac_amd64" => "go2rtc"
+    end
+  end
 
-          # 简单再替换 amd 的 sha256（可以按模式匹配 amd 段）
-          # 为简化，这里直接第二个 sha256 替换为 amd_sha
-          count=0
-          awk -v sha="$amd_sha" '
-            /sha256 "/ {
-              count++
-              if (count == 2) {
-                sub(/sha256 ".*"/, "sha256 \"" sha "\"")
-              }
-            }
-            {print}
-          ' Formula/go2rtc.rb > Formula/go2rtc.tmp && mv Formula/go2rtc.tmp Formula/go2rtc.rb
+  test do
+    output = shell_output("\#{bin}/go2rtc -h 2>&1")
+    assert_match "go2rtc", output
+  end
+end
+EOF
 
       - name: Commit and push changes
+        if: steps.latest.outputs.version != steps.current.outputs.current
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: bump go2rtc to ${{ steps.get_tag.outputs.tag }}"
+          commit_message: "chore: bump go2rtc to ${{ steps.latest.outputs.tag }}"
           branch: main
