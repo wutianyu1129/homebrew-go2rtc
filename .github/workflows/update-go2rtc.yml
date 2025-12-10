@@ -18,7 +18,6 @@ jobs:
         run: |
           api="https://api.github.com/repos/AlexxIT/go2rtc/releases/latest"
           json=$(curl -s "$api")
-
           tag=$(echo "$json" | jq -r '.tag_name')
           version="${tag#v}"
 
