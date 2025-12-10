@@ -1,0 +1,101 @@
+name: Update go2rtc formula
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # 每天早上 6 点 UTC 跑一次
+  workflow_dispatch: {}   # 也支持手动触发
+
+jobs:
+  update-formula:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+
+      - name: Get latest go2rtc release tag
+        id: get_tag
+        run: |
+          latest=$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest | \
+                   grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "tag=$latest" >> $GITHUB_OUTPUT
+
+      - name: Read current version from formula
+        id: get_version
+        run: |
+          current=$(grep 'version "' Formula/go2rtc.rb | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "current=$current" >> $GITHUB_OUTPUT
+
+      - name: Stop if version is already latest
+        if: steps.get_tag.outputs.tag == format('v{0}', steps.get_version.outputs.current)
+        run: |
+          echo "Already up to date: ${ { steps.get_version.outputs.current } }"
+          exit 0
+
+      - name: Download new binaries and calc sha256
+        id: sha
+        run: |
+          tag=${{ steps.get_tag.outputs.tag }}
+
+          arm_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_arm64.zip"
+          amd_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_amd64.zip"
+
+          curl -L "$arm_url" -o go2rtc_mac_arm64.zip
+          curl -L "$amd_url" -o go2rtc_mac_amd64.zip
+
+          arm_sha=$(shasum -a 256 go2rtc_mac_arm64.zip | cut -d' ' -f1)
+          amd_sha=$(shasum -a 256 go2rtc_mac_amd64.zip | cut -d' ' -f1)
+
+          echo "arm_sha=$arm_sha" >> $GITHUB_OUTPUT
+          echo "amd_sha=$amd_sha" >> $GITHUB_OUTPUT
+          echo "arm_url=$arm_url" >> $GITHUB_OUTPUT
+          echo "amd_url=$amd_url" >> $GITHUB_OUTPUT
+
+      - name: Update formula file
+        run: |
+          new_version=${{ steps.get_tag.outputs.tag }}
+          new_version=${new_version#v}  # 去掉前面的 v
+
+          arm_sha=${{ steps.sha.outputs.arm_sha }}
+          amd_sha=${{ steps.sha.outputs.amd_sha }}
+          arm_url=${{ steps.sha.outputs.arm_url }}
+          amd_url=${{ steps.sha.outputs.amd_url }}
+
+          # 更新 version
+          sed -i "s/^  version \".*\"/  version \"${new_version}\"/" Formula/go2rtc.rb
+
+          # 更新 arm64 url & sha256
+          sed -i "s#https://github.com/AlexxIT/go2rtc/releases/download/.*go2rtc_mac_arm64.zip#${arm_url}#" Formula/go2rtc.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${arm_sha}\"/" Formula/go2rtc.rb
+
+          # 更新 amd64 url & sha256（这里简单粗暴一点，用行号/上下文会更安全）
+          # 为了简单，这里假设 amd64 那段在 arm64 后面，可以再精细化匹配
+          awk '
+            /go2rtc_mac_arm64.zip/ {arm=1}
+            /go2rtc_mac_amd64.zip/ {amd=1}
+            {
+              if (amd == 1 && $0 ~ /https:\/\/github.com\/AlexxIT\/go2rtc\/releases\/download/) {
+                sub(/https:\/\/github.com\/AlexxIT\/go2rtc\/releases\/download\/[^"]+go2rtc_mac_amd64.zip/, "'"$amd_url"'", $0)
+              }
+              print
+            }
+          ' Formula/go2rtc.rb > Formula/go2rtc.tmp && mv Formula/go2rtc.tmp Formula/go2rtc.rb
+
+          # 简单再替换 amd 的 sha256（可以按模式匹配 amd 段）
+          # 为简化，这里直接第二个 sha256 替换为 amd_sha
+          count=0
+          awk -v sha="$amd_sha" '
+            /sha256 "/ {
+              count++
+              if (count == 2) {
+                sub(/sha256 ".*"/, "sha256 \"" sha "\"")
+              }
+            }
+            {print}
+          ' Formula/go2rtc.rb > Formula/go2rtc.tmp && mv Formula/go2rtc.tmp Formula/go2rtc.rb
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: bump go2rtc to ${{ steps.get_tag.outputs.tag }}"
+          branch: main
