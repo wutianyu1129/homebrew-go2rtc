@@ -1,7 +1,7 @@
 class Go2rtc < Formula
   desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
   homepage "https://github.com/AlexxIT/go2rtc"
-  version ".9.12"
+  version "1"
 
   # 只处理 macOS（arm64 / amd64），URL 和 SHA 由 workflow 自动填入
   if Hardware::CPU.arm?
