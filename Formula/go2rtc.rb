@@ -1,15 +1,15 @@
 class Go2rtc < Formula
   desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
   homepage "https://github.com/AlexxIT/go2rtc"
-  version "1.9.12"
+  version "1.9.13"
 
   # 根据架构选择 URL 和 SHA
   if Hardware::CPU.arm?
-    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.12/go2rtc_mac_arm64.zip"
-    sha256 "63d3e986ecc6e9878cd10bb92b7e7fefc427f390519b10e059f8f47dba33dd5e"
+    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.13/go2rtc_mac_arm64.zip"
+    sha256 "71d5621e73070da821dbb7bbc88074ccc52c7be0d96b47dcd4837533cd00ca47"
   else
-    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.12/go2rtc_mac_amd64.zip"
-    sha256 "865e0f46823a80980b9cccad05c29b6ff8f4003de7b00520db353d5ca84d12d7"
+    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.13/go2rtc_mac_amd64.zip"
+    sha256 "e06257c82f05e8bfce88769f7ff1fd9c6d838d1b8de7a9d8154888ccc93f31ee"
   end
 
   def install
