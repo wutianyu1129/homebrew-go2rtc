@@ -27,72 +27,144 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Get current version from formula (if exists)
+      - name: Get nightly (HEAD) sha256
+        id: head
+        run: |
+          head_arm_url="https://nightly.link/AlexxIT/go2rtc/workflows/build/master/go2rtc_mac_arm64.zip"
+          head_amd_url="https://nightly.link/AlexxIT/go2rtc/workflows/build/master/go2rtc_mac_amd64.zip"
+
+          echo "Downloading HEAD arm: $head_arm_url"
+          curl -L "$head_arm_url" -o head_mac_arm64.zip
+
+          echo "Downloading HEAD amd: $head_amd_url"
+          curl -L "$head_amd_url" -o head_mac_amd64.zip
+
+          head_arm_sha=$(shasum -a 256 head_mac_arm64.zip | cut -d' ' -f1)
+          head_amd_sha=$(shasum -a 256 head_mac_amd64.zip | cut -d' ' -f1)
+
+          echo "head_arm_url=$head_arm_url" >> "$GITHUB_OUTPUT"
+          echo "head_amd_url=$head_amd_url" >> "$GITHUB_OUTPUT"
+          echo "head_arm_sha=$head_arm_sha" >> "$GITHUB_OUTPUT"
+          echo "head_amd_sha=$head_amd_sha" >> "$GITHUB_OUTPUT"
+
+          rm -f head_mac_arm64.zip head_mac_amd64.zip
+
+      - name: Get current version + current HEAD sha from formula (if exists)
         id: current
         run: |
           if [ -f Formula/go2rtc.rb ]; then
-            current=$(grep 'version "' Formula/go2rtc.rb | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+            current_version=$(grep 'version "' Formula/go2rtc.rb | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+
+            # 从包含 nightly.link 的 url 后一行取 sha256（我们下面生成的公式里 url 紧跟 sha256）
+            current_head_arm_sha=$(awk '
+              /nightly\.link\/AlexxIT\/go2rtc\/workflows\/build\/master\/go2rtc_mac_arm64\.zip/ {
+                getline
+                if ($1=="sha256") { gsub(/"/,"",$2); print $2 }
+              }' Formula/go2rtc.rb)
+
+            current_head_amd_sha=$(awk '
+              /nightly\.link\/AlexxIT\/go2rtc\/workflows\/build\/master\/go2rtc_mac_amd64\.zip/ {
+                getline
+                if ($1=="sha256") { gsub(/"/,"",$2); print $2 }
+              }' Formula/go2rtc.rb)
           else
-            current=""
+            current_version=""
+            current_head_arm_sha=""
+            current_head_amd_sha=""
           fi
-          echo "Current version: $current"
-          echo "current=$current" >> "$GITHUB_OUTPUT"
 
-      - name: Already up to date?
-        if: steps.latest.outputs.version == steps.current.outputs.current
+          echo "Current version: $current_version"
+          echo "Current head arm sha: $current_head_arm_sha"
+          echo "Current head amd sha: $current_head_amd_sha"
+
+          echo "version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "head_arm_sha=$current_head_arm_sha" >> "$GITHUB_OUTPUT"
+          echo "head_amd_sha=$current_head_amd_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether update is needed
+        id: decide
         run: |
-          echo "Already up to date: ${{ steps.current.outputs.current }}"
+          needs_update=false
+          commit_message=""
 
-      - name: Download new binaries and calculate sha256
-        if: steps.latest.outputs.version != steps.current.outputs.current
+          latest_version="${{ steps.latest.outputs.version }}"
+          current_version="${{ steps.current.outputs.version }}"
+
+          new_head_arm_sha="${{ steps.head.outputs.head_arm_sha }}"
+          new_head_amd_sha="${{ steps.head.outputs.head_amd_sha }}"
+          cur_head_arm_sha="${{ steps.current.outputs.head_arm_sha }}"
+          cur_head_amd_sha="${{ steps.current.outputs.head_amd_sha }}"
+
+          if [ ! -f Formula/go2rtc.rb ]; then
+            needs_update=true
+            commit_message="chore: add go2rtc formula"
+          elif [ "$latest_version" != "$current_version" ]; then
+            needs_update=true
+            commit_message="chore: bump go2rtc to ${{ steps.latest.outputs.tag }}"
+          elif [ "$new_head_arm_sha" != "$cur_head_arm_sha" ] || [ "$new_head_amd_sha" != "$cur_head_amd_sha" ]; then
+            needs_update=true
+            commit_message="chore: update go2rtc HEAD artifacts"
+          else
+            needs_update=false
+            commit_message="(no changes)"
+          fi
+
+          echo "needs_update=$needs_update"
+          echo "commit_message=$commit_message"
+
+          echo "needs_update=$needs_update" >> "$GITHUB_OUTPUT"
+          echo "commit_message=$commit_message" >> "$GITHUB_OUTPUT"
+
+      - name: Download new stable binaries and calculate sha256
+        if: steps.decide.outputs.needs_update == 'true'
         id: sha
         run: |
           tag="${{ steps.latest.outputs.tag }}"
-          
-          # 下载地址
+
+          # release 下载地址
           arm_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_arm64.zip"
           amd_url="https://github.com/AlexxIT/go2rtc/releases/download/${tag}/go2rtc_mac_amd64.zip"
-          
+
           echo "Downloading $arm_url"
           curl -L "$arm_url" -o go2rtc_mac_arm64.zip
-          
+
           echo "Downloading $amd_url"
           curl -L "$amd_url" -o go2rtc_mac_amd64.zip
-          
-          # 计算 SHA256
+
           arm_sha=$(shasum -a 256 go2rtc_mac_arm64.zip | cut -d' ' -f1)
           amd_sha=$(shasum -a 256 go2rtc_mac_amd64.zip | cut -d' ' -f1)
-          
-          echo "arm_sha=$arm_sha"
-          echo "amd_sha=$amd_sha"
-          
+
           echo "arm_url=$arm_url" >> "$GITHUB_OUTPUT"
           echo "amd_url=$amd_url" >> "$GITHUB_OUTPUT"
           echo "arm_sha=$arm_sha" >> "$GITHUB_OUTPUT"
           echo "amd_sha=$amd_sha" >> "$GITHUB_OUTPUT"
-          
-          # 清理临时文件
+
           rm -f go2rtc_mac_arm64.zip go2rtc_mac_amd64.zip
 
-      - name: Rewrite Formula/go2rtc.rb
-        if: steps.latest.outputs.version != steps.current.outputs.current
+      - name: Rewrite Formula/go2rtc.rb (stable + HEAD)
+        if: steps.decide.outputs.needs_update == 'true'
         run: |
           version="${{ steps.latest.outputs.version }}"
+
           arm_url="${{ steps.sha.outputs.arm_url }}"
           amd_url="${{ steps.sha.outputs.amd_url }}"
           arm_sha="${{ steps.sha.outputs.arm_sha }}"
           amd_sha="${{ steps.sha.outputs.amd_sha }}"
-          
+
+          head_arm_url="${{ steps.head.outputs.head_arm_url }}"
+          head_amd_url="${{ steps.head.outputs.head_amd_url }}"
+          head_arm_sha="${{ steps.head.outputs.head_arm_sha }}"
+          head_amd_sha="${{ steps.head.outputs.head_amd_sha }}"
+
           mkdir -p Formula
-          
-          # 生成 Ruby 文件
+
           cat > Formula/go2rtc.rb << 'EOF'
           class Go2rtc < Formula
             desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
             homepage "https://github.com/AlexxIT/go2rtc"
             version "__VERSION__"
-          
-            # 根据架构选择 URL 和 SHA
+
+            # stable (release)
             if Hardware::CPU.arm?
               url "__ARM_URL__"
               sha256 "__ARM_SHA__"
@@ -100,12 +172,21 @@ jobs:
               url "__AMD_URL__"
               sha256 "__AMD_SHA__"
             end
-          
+
+            # HEAD (nightly artifacts)
+            head do
+              if Hardware::CPU.arm?
+                url "__HEAD_ARM_URL__"
+                sha256 "__HEAD_ARM_SHA__"
+              else
+                url "__HEAD_AMD_URL__"
+                sha256 "__HEAD_AMD_SHA__"
+              end
+            end
+
             def install
-              # 关键修改：直接安装名为 go2rtc 的二进制文件
               bin.install "go2rtc"
-          
-              # 配置文件逻辑
+
               (etc/"go2rtc").mkpath
               config_file = etc/"go2rtc/go2rtc.yaml"
               unless config_file.exist?
@@ -114,22 +195,24 @@ jobs:
                 YAML
               end
             end
-          
+
             def post_install
               (var/"go2rtc").mkpath
               (var/"log").mkpath
             end
-          
+
             def caveats
               <<~EOS
                 配置文件: #{etc}/go2rtc/go2rtc.yaml
                 日志文件: #{var}/log/go2rtc.log
-                
+
                 启动服务: brew services start #{name.downcase}
                 重启服务: brew services restart #{name.downcase}
+
+                安装 HEAD (nightly): brew install #{name.downcase} --HEAD
               EOS
             end
-          
+
             service do
               run [opt_bin/"go2rtc", "-config", etc/"go2rtc/go2rtc.yaml"]
               working_dir var/"go2rtc"
@@ -137,28 +220,33 @@ jobs:
               log_path var/"log/go2rtc.log"
               error_log_path var/"log/go2rtc.log"
             end
-          
+
             test do
               output = shell_output("#{bin}/go2rtc -h 2>&1")
               assert_match "go2rtc", output
             end
           end
           EOF
-          
-          # 替换变量
+
           sed -i "s/__VERSION__/${version}/" Formula/go2rtc.rb
+
           sed -i "s#__ARM_URL__#${arm_url}#" Formula/go2rtc.rb
           sed -i "s/__ARM_SHA__/${arm_sha}/" Formula/go2rtc.rb
           sed -i "s#__AMD_URL__#${amd_url}#" Formula/go2rtc.rb
           sed -i "s/__AMD_SHA__/${amd_sha}/" Formula/go2rtc.rb
-          
+
+          sed -i "s#__HEAD_ARM_URL__#${head_arm_url}#" Formula/go2rtc.rb
+          sed -i "s/__HEAD_ARM_SHA__/${head_arm_sha}/" Formula/go2rtc.rb
+          sed -i "s#__HEAD_AMD_URL__#${head_amd_url}#" Formula/go2rtc.rb
+          sed -i "s/__HEAD_AMD_SHA__/${head_amd_sha}/" Formula/go2rtc.rb
+
           echo "New Formula/go2rtc.rb:"
           cat Formula/go2rtc.rb
 
       - name: Commit and push changes
-        if: steps.latest.outputs.version != steps.current.outputs.current
+        if: steps.decide.outputs.needs_update == 'true'
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "chore: bump go2rtc to ${{ steps.latest.outputs.tag }}"
+          commit_message: "${{ steps.decide.outputs.commit_message }}"
           branch: main
           file_pattern: Formula/go2rtc.rb
