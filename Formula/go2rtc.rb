@@ -16,10 +16,10 @@ class Go2rtc < Formula
   head do
     if Hardware::CPU.arm?
       url "https://nightly.link/AlexxIT/go2rtc/workflows/build/master/go2rtc_mac_arm64.zip"
-      sha256 "519d8f1cf97a0cc04b68a5b8f0e3f90eeb5373f9b4c0b82fb53711f8754ec7f9"
+      sha256 "1a295f9da1b3582460a1978e114818b3763dd386b019e39268748eb8967f4cbb"
     else
       url "https://nightly.link/AlexxIT/go2rtc/workflows/build/master/go2rtc_mac_amd64.zip"
-      sha256 "41ca1df9b5085586b03aad77dd2ea9f2021ff2f152ca5e1a418540fdc14533ac"
+      sha256 "56c20a3df92588c24e1b7c860bb5f17800b680201127f4517bfcb667320470ae"
     end
   end
 
