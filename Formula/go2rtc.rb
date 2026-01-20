@@ -1,25 +1,25 @@
 class Go2rtc < Formula
   desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
   homepage "https://github.com/AlexxIT/go2rtc"
-  version "1.9.13"
+  version "1.9.14"
 
   # stable (release)
   if Hardware::CPU.arm?
-    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.13/go2rtc_mac_arm64.zip"
-    sha256 "71d5621e73070da821dbb7bbc88074ccc52c7be0d96b47dcd4837533cd00ca47"
+    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_mac_arm64.zip"
+    sha256 "919b78adc759d6b3883d1e1b2ac915ac0985bb903ff1897b4d228527bd64690c"
   else
-    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.13/go2rtc_mac_amd64.zip"
-    sha256 "e06257c82f05e8bfce88769f7ff1fd9c6d838d1b8de7a9d8154888ccc93f31ee"
+    url "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_mac_amd64.zip"
+    sha256 "9b0b9a27a4dc3a5b8b93376e7e8fc2787c6af624a512842622be84aec0171c7a"
   end
 
   # HEAD (nightly artifacts)
   head do
     if Hardware::CPU.arm?
       url "https://nightly.link/AlexxIT/go2rtc/workflows/build/master/go2rtc_mac_arm64.zip"
-      sha256 "e1440d9b952b354d5a082d241ec64a9803f1e02b2e8ef77c782af945efcceb1a"
+      sha256 "9bcf919d09616f42e4eb1150651f20c4253c4f14af3224bc833fedd8c36caab5"
     else
       url "https://nightly.link/AlexxIT/go2rtc/workflows/build/master/go2rtc_mac_amd64.zip"
-      sha256 "0043cbdb403d68794385f2b400649eec3466d2f8a771fd6f6b84d4b5907e8a74"
+      sha256 "968d68973cb61d572ff2325b2f5becc35d3fb016168f96b5aeb155de4c15278b"
     end
   end
 
