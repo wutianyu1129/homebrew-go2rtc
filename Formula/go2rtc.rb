@@ -1,7 +1,7 @@
 class Go2rtc < Formula
   desc "Ultimate camera streaming application with RTSP, WebRTC, RTMP, etc."
   homepage "https://github.com/AlexxIT/go2rtc"
-  version "1.9.14"
+  version "1.9.13"
 
   # stable (release)
   if Hardware::CPU.arm?
